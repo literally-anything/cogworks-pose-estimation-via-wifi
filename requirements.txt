@@ -1,0 +1,6 @@
+torch~=2.3.0
+numpy~=1.26.4
+pandas~=2.2.2
+matplotlib~=3.8.4
+opencv-python~=4.9.0.80
+detectron2 @ git+https://github.com/facebookresearch/detectron2@0ae803b
