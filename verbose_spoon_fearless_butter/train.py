@@ -16,11 +16,11 @@ from verbose_spoon_fearless_butter.util.fixed_task_progress import FixedTaskProg
 
 console = Console()
 error_console = Console(stderr=True, style="bold red")
-install_rich_traceback(console=error_console, show_locals=True, width=None, suppress=[torch, pickle])
+# install_rich_traceback(console=error_console, show_locals=True, width=None, suppress=[torch, pickle])
 
 TRAIN_FILE_NAME = 'dataset_0.pkl'
 EVAL_FILE_NAME = 'dataset_0.pkl'
-EPOCH_COUNT = 100
+EPOCH_COUNT = 200
 BATCH_SIZE = 1
 DEVICE = torch.device('mps' if BATCH_SIZE >= 35 else 'cpu')
 
@@ -49,8 +49,8 @@ with console.status('Loading datasets...', spinner='bouncingBall') as status:
     criterion = nn.PairwiseDistance(p=1)
     optimizer = SGD(model.parameters(), lr=1e-3, momentum=0.9)
 
-    training_dataloader = DataLoader(training_dataset, batch_size=BATCH_SIZE, shuffle=True)
-    evaluation_dataloader = DataLoader(testing_dataset, batch_size=BATCH_SIZE, shuffle=True)
+    training_dataloader = DataLoader(training_dataset, batch_size=BATCH_SIZE, shuffle=False)
+    evaluation_dataloader = DataLoader(testing_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
     if DEVICE.type != 'cpu':
         status.update(f'Moving tensors to {DEVICE.type} device...')
@@ -98,6 +98,7 @@ def evaluate(_model: nn.Module, dataloader: DataLoader, track: Callable[[Iterabl
         eval_loss /= len(dataloader)
 
     return eval_loss.item()
+
 
 min_eval_loss: float = prev_min_loss
 if min_eval_loss != float('inf'):

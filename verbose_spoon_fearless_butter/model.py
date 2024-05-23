@@ -35,102 +35,107 @@ class Net(nn.Module):
         super().__init__()
 
         self.phase_encoder = nn.Sequential(
-            nn.Linear(48, 40),
+            nn.Linear(192, 160),
             nn.ReLU(),
-            nn.Linear(40, 32),
+            nn.Linear(160, 128),
             nn.ReLU(),
-            nn.Linear(32, 24),
+            nn.Linear(128, 96),
             nn.ReLU(),
-            nn.Linear(24, 16)
+            nn.Linear(96, 64)
+        )
+
+        self.phase_diff_encoder = nn.Sequential(
+            nn.Linear(192, 160),
+            nn.ReLU(),
+            nn.Linear(160, 128),
+            nn.ReLU(),
+            nn.Linear(128, 96),
+            nn.ReLU(),
+            nn.Linear(96, 64)
         )
 
         self.amplitude_encoder = nn.Sequential(
-            nn.Linear(48, 40),
+            nn.Linear(192, 160),
             nn.ReLU(),
-            nn.Linear(40, 32),
+            nn.Linear(160, 128),
             nn.ReLU(),
-            nn.Linear(32, 24),
+            nn.Linear(128, 96),
             nn.ReLU(),
-            nn.Linear(24, 16)
+            nn.Linear(96, 64)
         )
 
         self.ap_encoder = nn.Sequential(
-            nn.Linear(32, 24),
+            nn.Linear(192, 96),
             nn.ReLU(),
-            nn.Linear(24, 16),
+            nn.Linear(96, 48),
             nn.ReLU(),
-            nn.Linear(16, 8)
+            nn.Linear(48, 24),
+            nn.ReLU(),
+            nn.Linear(24, 12),
+            nn.ReLU(),
+            nn.Linear(12, 6),
+            nn.ReLU(),
+            nn.Linear(6, 2)
         )
 
-        self.ap_decoder = nn.Sequential(
-            nn.Linear(8, 16),
-            nn.ReLU(),
-            nn.Linear(16, 24),
-            nn.ReLU(),
-            nn.Linear(24, 32),
-            nn.ReLU(),
-            nn.Linear(32, 32)
-        )
+        # self.ap_decoder = nn.Sequential(
+        #     nn.Linear(32, 64),
+        #     nn.ReLU(),
+        #     nn.Linear(16, 24),
+        #     nn.ReLU(),
+        #     nn.Linear(24, 32),
+        #     nn.ReLU(),
+        #     nn.Linear(32, 32)
+        # )
 
-        self.conv = nn.Sequential(
-            nn.Conv1d(1, 16, 4),
-            nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2),
-            nn.Conv1d(16, 32, 3),
-            nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2)
-        )
+        # self.conv = nn.Sequential(
+        #     nn.Conv1d(1, 16, 4),
+        #     nn.ReLU(),
+        #     nn.MaxPool1d(kernel_size=2),
+        #     nn.Conv1d(16, 32, 3),
+        #     nn.ReLU(),
+        #     nn.MaxPool1d(kernel_size=2)
+        # )
 
-        self.fc = nn.Sequential(
-            nn.Linear(32, 24),
-            nn.ReLU(),
-            nn.Linear(24, 16),
-            nn.ReLU(),
-            nn.Linear(16, 1)
-        )
+        # self.fc = nn.Sequential(
+        #     nn.Linear(64, 24),
+        #     nn.ReLU(),
+        #     nn.Linear(24, 16),
+        #     nn.ReLU(),
+        #     nn.Linear(16, 1)
+        # )
 
-        self.output = nn.Linear(6, 2)
+        # self.output = nn.Linear(6, 2)
+
+        self.last_phases: Tensor | None = None
 
     @jit.export
     def forward(self, x: Tensor) -> Tensor:
-        is_training = len(x.shape) == 3
-        start_dim = 1 if is_training else 0
+        phases = x[:, :, 0, :].flatten(start_dim=1)
+        amplitudes = x[:, :, 1, :].flatten(start_dim=1)
 
-        phases = x[:, 0, :] if is_training else x[0, :]
-        amplitudes = x[:, 1, :] if is_training else x[1, :]
+        if self.last_phases is not None:
+            phase_differences = phases - self.last_phases
+            encoded_phases: Tensor = self.phase_encoder(phases)
+            encoded_phase_diffs: Tensor = self.phase_diff_encoder(phase_differences)
+            encoded_amplitudes: Tensor = self.amplitude_encoder(amplitudes)
 
-        encoded_phases: Tensor = self.phase_encoder(phases)
-        encoded_amplitudes: Tensor = self.amplitude_encoder(amplitudes)
+            ap = torch.cat([encoded_phases, encoded_phase_diffs, encoded_amplitudes], dim=1)
 
-        # print(encoded_amplitudes.shape, encoded_phases.shape)
+            x: Tensor = self.ap_encoder(ap)
+            # x: Tensor = self.ap_decoder(x)
 
-        ap = torch.cat([encoded_phases, encoded_amplitudes], dim=start_dim)
+            # x = x[:, None, :]
+            # print('1', x.shape)
+            # x: Tensor = self.conv(x)
 
-        # print(ap.shape)
-
-        x: Tensor = self.ap_encoder(ap)
-        # print(x.shape)
-        x: Tensor = self.ap_decoder(x)
-        # print(x.shape)
-
-        x = x[:, None, :]
-        # print(x.shape)
-        x: Tensor = self.conv(x)
-        # print(x.shape)
-        # x = torch.squeeze(x)
-        # print(5, x.shape)
-
-        # x = torch.flatten(x, start_dim=1)
-        x = x.transpose(1, 2)
-        #
-        # print(6, x.shape)
-
-        x = self.fc(x)
-
-        x = x.transpose(1, 2)
-
-        x = self.output(x)
-
-        # print('out', x.shape)
+            # x = x.transpose(1, 2)
+            #
+            # x = self.fc(x)
+            #
+            # x = x.transpose(1, 2)
+            #
+            # x = self.output(x)
+        self.last_phases = phases
 
         return x
