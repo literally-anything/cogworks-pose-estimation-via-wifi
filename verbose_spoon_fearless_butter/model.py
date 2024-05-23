@@ -1,76 +1,136 @@
-import os
-
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
+from typing import Any, Callable
 
 import torch
+from torch import Tensor
 import torch.nn as nn
+import torch.jit as jit
 import torch.nn.functional as F
+from torch.utils.data import Dataset
+
+
+class CSIDataset(Dataset):
+    def __init__(self, input_data: Tensor, truth_data: Tensor) -> None:
+        self.input: Tensor = input_data.clone().detach()
+        self.truth: Tensor = truth_data.clone().detach()
+
+    def to(self, device: torch.device | str) -> None:
+        self.input = self.input.to(device)
+        self.truth = self.truth.to(device)
+
+    def __len__(self) -> int:
+        return len(self.input)
+
+    def __getitem__(self, index):
+        return self.input[index], self.truth[index]
+
+    def __getstate__(self) -> dict[str, Any]:
+        states = self.__dict__.copy()
+        states['input'] = self.input.cpu()
+        states['truth'] = self.truth.cpu()
+        return states
 
 
 class Net(nn.Module):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
 
-        self.conv1 = nn.Conv1d(2, 4, 5)
-        self.conv12 = nn.Conv1d(4, 8, 5)
-        self.conv13 = nn.Conv1d(8, 16, 5)
-        self.conv14 = nn.Conv1d(16, 32, 4)
-        self.conv2 = nn.Conv1d(32, 64, 4)
-        self.conv3 = nn.Conv1d(64, 128, 4)
+        self.phase_encoder = nn.Sequential(
+            nn.Linear(48, 40),
+            nn.ReLU(),
+            nn.Linear(40, 32),
+            nn.ReLU(),
+            nn.Linear(32, 24),
+            nn.ReLU(),
+            nn.Linear(24, 16)
+        )
 
-        self.drop1 = nn.Dropout(p=0.25)
-        self.drop2 = nn.Dropout(p=0.25)
-        self.drop3 = nn.Dropout(p=0.25)
+        self.amplitude_encoder = nn.Sequential(
+            nn.Linear(48, 40),
+            nn.ReLU(),
+            nn.Linear(40, 32),
+            nn.ReLU(),
+            nn.Linear(32, 24),
+            nn.ReLU(),
+            nn.Linear(24, 16)
+        )
 
-        self.avg_pool = nn.AvgPool1d(36)
+        self.ap_encoder = nn.Sequential(
+            nn.Linear(32, 24),
+            nn.ReLU(),
+            nn.Linear(24, 16),
+            nn.ReLU(),
+            nn.Linear(16, 8)
+        )
 
-        self.fc1 = nn.Linear(128, 64)
-        self.fc2 = nn.Linear(64, 32)
-        self.fc3 = nn.Linear(32, 2)
+        self.ap_decoder = nn.Sequential(
+            nn.Linear(8, 16),
+            nn.ReLU(),
+            nn.Linear(16, 24),
+            nn.ReLU(),
+            nn.Linear(24, 32),
+            nn.ReLU(),
+            nn.Linear(32, 32)
+        )
 
-    def forward(self, x):
-        """ The model's forward pass functionality.
+        self.conv = nn.Sequential(
+            nn.Conv1d(1, 16, 4),
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2),
+            nn.Conv1d(16, 32, 3),
+            nn.ReLU(),
+            nn.MaxPool1d(kernel_size=2)
+        )
 
-        Parameters
-        ----------
-        x : Union[numpy.ndarray, mygrad.Tensor], shape=(N, T)
-            The batch of size-N.
+        self.fc = nn.Sequential(
+            nn.Linear(32, 24),
+            nn.ReLU(),
+            nn.Linear(24, 16),
+            nn.ReLU(),
+            nn.Linear(16, 1)
+        )
 
-        Returns
-        -------
-        mygrad.Tensor, shape=(N, 2)
-            The model's predictions for each of the N pieces of data in the batch.
-        """
-        # CHANGE DOCSTRING
+        self.output = nn.Linear(6, 2)
 
-        x = F.selu(self.conv1(x))
-        print(1, x.shape)
+    @jit.export
+    def forward(self, x: Tensor) -> Tensor:
+        is_training = len(x.shape) == 3
+        start_dim = 1 if is_training else 0
 
-        x = F.selu(self.conv12(x))
-        print(12, x.shape)
-        x = F.selu(self.conv13(x))
-        print(13, x.shape)
+        phases = x[:, 0, :] if is_training else x[0, :]
+        amplitudes = x[:, 1, :] if is_training else x[1, :]
 
-        x = F.selu(self.conv2(x))
-        print(2,x.shape)
+        encoded_phases: Tensor = self.phase_encoder(phases)
+        encoded_amplitudes: Tensor = self.amplitude_encoder(amplitudes)
 
-        x = F.selu(self.conv3(x))
-        print(3,x.shape)
+        # print(encoded_amplitudes.shape, encoded_phases.shape)
 
-        # x = self.avg_pool(x)
-        print(4,x.shape)
-        x = torch.squeeze(x)  # squeeze to remove dimension 1 at end, becomes 100x24 array
-        print(5,x.shape)
+        ap = torch.cat([encoded_phases, encoded_amplitudes], dim=start_dim)
 
-        x = F.selu(self.fc1(x))
-        print(6,x.shape)
-        x = F.selu(self.fc2(x))
-        print(7,x.shape)
-        x = self.fc3(x)
-        print(8,x.shape)
+        # print(ap.shape)
+
+        x: Tensor = self.ap_encoder(ap)
+        # print(x.shape)
+        x: Tensor = self.ap_decoder(x)
+        # print(x.shape)
+
+        x = x[:, None, :]
+        # print(x.shape)
+        x: Tensor = self.conv(x)
+        # print(x.shape)
+        # x = torch.squeeze(x)
+        # print(5, x.shape)
+
+        # x = torch.flatten(x, start_dim=1)
+        x = x.transpose(1, 2)
+        #
+        # print(6, x.shape)
+
+        x = self.fc(x)
+
+        x = x.transpose(1, 2)
+
+        x = self.output(x)
+
+        # print('out', x.shape)
+
         return x
-
-
-net = Net()
