@@ -41,7 +41,15 @@ class Net(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 96),
             nn.ReLU(),
-            nn.Linear(96, 64)
+            nn.Linear(96, 64),
+            nn.ReLU(),
+            nn.Linear(64, 96),
+            nn.ReLU(),
+            nn.Linear(96, 128),
+            nn.ReLU(),
+            nn.Linear(128, 160),
+            nn.ReLU(),
+            nn.Linear(160,192)
         )
 
         self.phase_diff_encoder = nn.Sequential(
@@ -51,7 +59,15 @@ class Net(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 96),
             nn.ReLU(),
-            nn.Linear(96, 64)
+            nn.Linear(96, 64),
+            nn.ReLU(),
+            nn.Linear(64, 96),
+            nn.ReLU(),
+            nn.Linear(96, 128),
+            nn.ReLU(),
+            nn.Linear(128, 160),
+            nn.ReLU(),
+            nn.Linear(160, 192)
         )
 
         self.amplitude_encoder = nn.Sequential(
@@ -61,10 +77,50 @@ class Net(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 96),
             nn.ReLU(),
-            nn.Linear(96, 64)
+            nn.Linear(96, 64),
+            nn.ReLU(),
+            nn.Linear(64, 96),
+            nn.ReLU(),
+            nn.Linear(96, 128),
+            nn.ReLU(),
+            nn.Linear(128, 160),
+            nn.ReLU(),
+            nn.Linear(160, 192)
         )
 
         self.ap_encoder = nn.Sequential(
+            nn.Linear(576, 480),
+            nn.ReLU(),
+            nn.Linear(480, 384),
+            nn.ReLU(),
+            nn.Linear(384, 288),
+            nn.ReLU(),
+            nn.Linear(288, 192),
+            nn.ReLU(),
+            nn.Linear(192, 96),
+            nn.ReLU(),
+            nn.Linear(96, 48),
+            nn.ReLU(),
+            nn.Linear(48, 96),
+            nn.ReLU(),
+            nn.Linear(96, 192),
+            nn.ReLU(),
+            nn.Linear(192, 288),
+            nn.ReLU(),
+            nn.Linear(288, 384),
+            nn.ReLU(),
+            nn.Linear(384, 480),
+            nn.ReLU(),
+            nn.Linear(480, 576),
+            nn.ReLU(),
+            nn.Linear(576, 480),
+            nn.ReLU(),
+            nn.Linear(480, 384),
+            nn.ReLU(),
+            nn.Linear(384, 288),
+            nn.ReLU(),
+            nn.Linear(288, 192),
+            nn.ReLU(),
             nn.Linear(192, 96),
             nn.ReLU(),
             nn.Linear(96, 48),
@@ -114,28 +170,24 @@ class Net(nn.Module):
         phases = x[:, :, 0, :].flatten(start_dim=1)
         amplitudes = x[:, :, 1, :].flatten(start_dim=1)
 
-        if self.last_phases is not None:
-            phase_differences = phases - self.last_phases
-            encoded_phases: Tensor = self.phase_encoder(phases)
-            encoded_phase_diffs: Tensor = self.phase_diff_encoder(phase_differences)
-            encoded_amplitudes: Tensor = self.amplitude_encoder(amplitudes)
+        if self.last_phases is None:
+            self.last_phases = phases
 
-            ap = torch.cat([encoded_phases, encoded_phase_diffs, encoded_amplitudes], dim=1)
+        phase_differences = phases - self.last_phases
+        encoded_phases: Tensor = self.phase_encoder(phases)
+        encoded_phase_diffs: Tensor = self.phase_diff_encoder(phase_differences)
+        encoded_amplitudes: Tensor = self.amplitude_encoder(amplitudes)
 
-            x: Tensor = self.ap_encoder(ap)
-            # x: Tensor = self.ap_decoder(x)
+        # print(1, encoded_amplitudes.shape, encoded_phases.shape, encoded_phase_diffs.shape)
 
-            # x = x[:, None, :]
-            # print('1', x.shape)
-            # x: Tensor = self.conv(x)
+        ap = torch.cat([encoded_phases, encoded_phase_diffs, encoded_amplitudes], dim=1)
 
-            # x = x.transpose(1, 2)
-            #
-            # x = self.fc(x)
-            #
-            # x = x.transpose(1, 2)
-            #
-            # x = self.output(x)
+        # print(2, ap.shape)
+
+        x: Tensor = self.ap_encoder(ap)
+
+        # print(3, x.shape)
+
         self.last_phases = phases
 
         return x
