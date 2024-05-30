@@ -8,7 +8,7 @@ from rich.console import Console
 from rich.progress import Progress, TaskID, TextColumn, BarColumn, TimeRemainingColumn, Column
 from rich.prompt import Confirm
 from rich.traceback import install as install_rich_traceback
-from torch.optim import SGD
+from torch.optim import SGD, Adam, RMSprop
 from torch.utils.data import DataLoader
 
 from verbose_spoon_fearless_butter.model import Net, CSIDataset
@@ -18,11 +18,12 @@ console = Console()
 error_console = Console(stderr=True, style="bold red")
 # install_rich_traceback(console=error_console, show_locals=True, width=None, suppress=[torch, pickle])
 
-TRAIN_FILE_NAME = 'dataset_0.pkl'
-EVAL_FILE_NAME = 'dataset_0.pkl'
-EPOCH_COUNT = 200
-BATCH_SIZE = 1
+TRAIN_FILE_NAME = 'dataset_0_unwrap.pkl'
+EVAL_FILE_NAME = 'dataset_0_unwrap.pkl'
+EPOCH_COUNT = 50
+BATCH_SIZE = 30
 DEVICE = torch.device('mps' if BATCH_SIZE >= 35 else 'cpu')
+# DEVICE = torch.device('cpu')
 
 model = Net()
 prev_min_loss = float("inf")
@@ -46,8 +47,11 @@ with console.status('Loading datasets...', spinner='bouncingBall') as status:
     console.log('Loaded datasets')
 
     status.update('Setting up...')
-    criterion = nn.PairwiseDistance(p=1)
-    optimizer = SGD(model.parameters(), lr=1e-3, momentum=0.9)
+    criterion = nn.PairwiseDistance(p=2)
+    # optimizer = SGD(model.parameters(), lr=1e-10, momentum=0.9)
+    # optimizer = SGD(model.parameters(), lr=1e-3)
+    optimizer = Adam(model.parameters(), lr=1e-3)
+    # optimizer = RMSprop(model.parameters(), lr=1e-2, momentum=0.9)
 
     training_dataloader = DataLoader(training_dataset, batch_size=BATCH_SIZE, shuffle=False)
     evaluation_dataloader = DataLoader(testing_dataset, batch_size=BATCH_SIZE, shuffle=False)
@@ -55,15 +59,18 @@ with console.status('Loading datasets...', spinner='bouncingBall') as status:
     if DEVICE.type != 'cpu':
         status.update(f'Moving tensors to {DEVICE.type} device...')
         model = model.to(DEVICE)
+        training_dataset.to(torch.float32)
+        testing_dataset.to(torch.float32)
         training_dataset.to(DEVICE)
         testing_dataset.to(DEVICE)
         criterion = criterion.to(DEVICE)
         console.log(f'Moved tensors to {DEVICE.type} device')
 console.log('Setup done')
 
-
 def train(_model: nn.Module, dataloader: DataLoader, track: Callable[[Iterable], Iterable]) -> float:
     _model.train()
+    _model.last_hidden = None
+    _model.lstm_last_hidden = None
 
     counter = 0
     train_loss = torch.tensor(0.0, device=DEVICE)
@@ -85,6 +92,8 @@ def train(_model: nn.Module, dataloader: DataLoader, track: Callable[[Iterable],
 
 def evaluate(_model: nn.Module, dataloader: DataLoader, track: Callable[[Iterable], Iterable]) -> float:
     _model.eval()
+    _model.last_hidden = None
+    _model.lstm_last_hidden = None
 
     counter = 0
     eval_loss = torch.tensor(0.0, device=DEVICE)
@@ -132,8 +141,8 @@ with (Progress(*columns, console=console) as progress):
             progress.stop_task(train_task)
 
             progress.reset(eval_task, description='Evaluating...', visible=True)
-            # evaluation_loss = evaluate(model, evaluation_dataloader, lambda seq: progress.track(seq, task_id=eval_task))
-            evaluation_loss = training_loss
+            evaluation_loss = evaluate(model, evaluation_dataloader, lambda seq: progress.track(seq, task_id=eval_task))
+            # evaluation_loss = training_loss
             progress.update(eval_task, description='Evaluation [bold green]done')
             progress.stop_task(eval_task)
 
