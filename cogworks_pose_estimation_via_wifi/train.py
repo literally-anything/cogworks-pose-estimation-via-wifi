@@ -11,8 +11,8 @@ from rich.traceback import install as install_rich_traceback
 from torch.optim import SGD, Adam, RMSprop
 from torch.utils.data import DataLoader
 
-from verbose_spoon_fearless_butter.model import Net, CSIDataset
-from verbose_spoon_fearless_butter.util.fixed_task_progress import FixedTaskProgressColumn
+from cogworks_pose_estimation_via_wifi.model import Net, CSIDataset
+from cogworks_pose_estimation_via_wifi.util.fixed_task_progress import FixedTaskProgressColumn
 
 console = Console()
 error_console = Console(stderr=True, style="bold red")
@@ -50,7 +50,7 @@ with console.status('Loading datasets...', spinner='bouncingBall') as status:
     criterion = nn.PairwiseDistance(p=2)
     # optimizer = SGD(model.parameters(), lr=1e-10, momentum=0.9)
     # optimizer = SGD(model.parameters(), lr=1e-3)
-    optimizer = Adam(model.parameters(), lr=1e-3)
+    optimizer = Adam(model.parameters(), lr=1e-4)
     # optimizer = RMSprop(model.parameters(), lr=1e-2, momentum=0.9)
 
     training_dataloader = DataLoader(training_dataset, batch_size=BATCH_SIZE, shuffle=False)
