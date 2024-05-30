@@ -211,9 +211,6 @@ class Net(nn.Module):
         #     nn.Linear(1024, 512)
         # )
         #
-        # self.lstm = nn.LSTM(512, 512, 16, dropout=0.4)
-        self.lstm = nn.LSTM(3, 64, 32, dropout=0.0, batch_first=True)
-        #
         # self.rnn = nn.RNN(512, 512, 16, dropout=0.4)
         self.rnn = nn.RNN(64, 64, 32, dropout=0.0, batch_first=True)
         # self.rnn = nn.RNN(3, 64, 32, dropout=0.0, batch_first=True)
@@ -268,7 +265,6 @@ class Net(nn.Module):
 
         # self.last_phases: Tensor | None = None
 
-        self.lstm_last_hidden = None
         self.last_hidden = None
 
     @jit.export
@@ -296,14 +292,6 @@ class Net(nn.Module):
         # x: Tensor = self.ap_encoder(ap)
         # x = torch.cat([phases, amplitudes, phase_differences], dim=1)
         x = torch.stack([phases, amplitudes, phase_differences], dim=2)
-        # print(x.shape)
-
-        # if self.lstm_last_hidden is None:
-        #     self.lstm_last_hidden = torch.zeros((16, 512), device=x.device)
-        x, hidden = self.lstm(x, self.lstm_last_hidden)
-        self.lstm_last_hidden = (hidden[0].detach(), hidden[1].detach())
-        # print(len(hidden), 'h1')
-
         # print(x.shape)
 
         # if self.last_hidden is None:
